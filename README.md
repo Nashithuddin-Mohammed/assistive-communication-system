@@ -13,10 +13,10 @@ A real-time assistive communication application that combines emotion detection 
 ![Surprise Emotion Detection](demo/Surprise.png)
 
 ### Speech-To-Text Output
-![Initial STT Transcription](demo/STT Initial.png)
-![Angry Emotion Transcription](demo/STT Angry.png)
-![Happy Emotion Transcription](demo/STT Happy.png)
-![Sad Emotion Transcription](demo/STT Sad.png)
+![Initial STT Transcription](demo/STT_Initial.png)
+![Angry Emotion Transcription](demo/STT_Angry.png)
+![Happy Emotion Transcription](demo/STT_Happy.png)
+![Sad Emotion Transcription](demo/STT_Sad.png)
 
 ## Features
 
