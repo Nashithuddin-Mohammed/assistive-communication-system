@@ -5,18 +5,18 @@ A real-time assistive communication application that combines emotion detection 
 ## Demo
 
 ### Emotion Detection
-![Angry Emotion Detection](demo/Angry.png)
-![Fear Emotion Detection](demo/Fear.png)
-![Happy Emotion Detection](demo/Happy.png)
-![Neutral Emotion Detection](demo/Neutral.png)
-![Sad Emotion Detection](demo/Sad.png)
-![Surprise Emotion Detection](demo/Surprise.png)
+![Angry Emotion Detection](demo/angry.png)
+![Fear Emotion Detection](demo/fear.png)
+![Happy Emotion Detection](demo/happy.png)
+![Neutral Emotion Detection](demo/neutral.png)
+![Sad Emotion Detection](demo/sad.png)
+![Surprise Emotion Detection](demo/surprise.png)
 
 ### Speech-To-Text Output
-![Initial STT Transcription](demo/STT_Initial.png)
-![Angry Emotion Transcription](demo/STT_Angry.png)
-![Happy Emotion Transcription](demo/STT_Happy.png)
-![Sad Emotion Transcription](demo/STT_Sad.png)
+![Initial STT Transcription](demo/stt_initial.png)
+![Angry Emotion Transcription](demo/stt_angry.png)
+![Happy Emotion Transcription](demo/stt_happy.png)
+![Sad Emotion Transcription](demo/stt_sad.png)
 
 ## Features
 
@@ -101,8 +101,19 @@ final_project_app/
 ├── transcribe_server.py   # Whisper transcription server
 ├── requirements.txt       # Python dependencies
 ├── README.md             # This file
-└── templates/
-    └── index.html        # Web interface
+├── templates/
+│   └── index.html        # Web interface
+└── demo/
+    ├── angry.png        
+    ├── fear.png        
+    ├── happy.png        
+    ├── neutral.png       
+    ├── sad.png        
+    ├── surprise.png    
+    ├── stt_initial.png 
+    ├── stt_angry.png   
+    ├── stt_happy.png   
+    └── stt_sad.png     
 ```
 
 ## Troubleshooting
