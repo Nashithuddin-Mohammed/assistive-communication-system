@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual Environment
+venv/
+venv310/
+env/
+
+# OS Files
+.DS_Store
+
+# Logs
+*.log
+
+# Temp Files
+*.tmp
