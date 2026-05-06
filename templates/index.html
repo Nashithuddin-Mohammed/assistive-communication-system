@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assistive Communication System</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 1400px; margin: 0 auto; }
+        h1 { text-align: center; color: white; margin-bottom: 20px; }
+        .main-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        .card h2 { color: #333; margin-bottom: 15px; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
+        #videoContainer { position: relative; background: #000; border-radius: 10px; overflow: hidden; }
+        #video { width: 100%; display: block; transform: scaleX(-1); }
+        #emotionOverlay {
+            position: absolute; top: 10px; left: 10px;
+            background: rgba(0,0,0,0.7); color: white;
+            padding: 10px 15px; border-radius: 8px; font-size: 1.2em;
+        }
+        .emotion-display { text-align: center; padding: 20px; margin-top: 15px; background: #f8f9fa; border-radius: 10px; }
+        .emotion-emoji { font-size: 4em; }
+        .emotion-name { font-size: 1.5em; font-weight: bold; margin-top: 10px; }
+        .controls { display: flex; gap: 10px; margin: 15px 0; }
+        button {
+            flex: 1; padding: 12px 20px; font-size: 1em;
+            border: none; border-radius: 8px; cursor: pointer;
+        }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .status { padding: 10px; border-radius: 8px; margin: 10px 0; text-align: center; }
+        .status.recording { background: #ffe0e0; color: #c00; animation: pulse 1s infinite; }
+        .status.ready { background: #e0ffe0; color: #060; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+        .transcription-box {
+            background: #f8f9fa; border-left: 4px solid #667eea;
+            padding: 15px; border-radius: 0 10px 10px 0;
+            min-height: 150px; max-height: 300px; overflow-y: auto; margin-top: 15px;
+        }
+        .transcription-item { padding: 8px 0; border-bottom: 1px solid #eee; }
+        .transcription-time { color: #999; font-size: 0.85em; }
+        .tts-section { margin-top: 20px; padding-top: 20px; border-top: 2px solid #eee; }
+        .tts-input { display: flex; gap: 10px; }
+        .tts-input input { flex: 1; padding: 12px; border: 2px solid #ddd; border-radius: 8px; font-size: 1em; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Assistive Communication System</h1>
+        <div class="main-grid">
+            <div class="card">
+                <h2>Emotion Detection</h2>
+                <div id="videoContainer">
+                    <video id="video" autoplay playsinline></video>
+                    <div id="emotionOverlay">Waiting...</div>
+                </div>
+                <div class="emotion-display">
+                    <div class="emotion-emoji" id="emotionEmoji">😐</div>
+                    <div class="emotion-name" id="emotionName">Neutral</div>
+                    <div id="emotionConfidence">Confidence: --</div>
+                </div>
+                <div class="controls">
+                    <button id="startVideoBtn" class="btn-primary" onclick="startVideo()">Start Camera</button>
+                    <button id="stopVideoBtn" class="btn-danger" onclick="stopVideo()" disabled>Stop Camera</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Continuous Speech-to-Text</h2>
+                <div class="controls">
+                    <button id="startAudioBtn" class="btn-primary" onclick="startAudio()">Start Recording</button>
+                    <button id="stopAudioBtn" class="btn-danger" onclick="stopAudio()" disabled>Stop Recording</button>
+                    <button class="btn-secondary" onclick="clearTranscriptions()">Clear</button>
+                </div>
+                <div id="audioStatus" class="status ready">Ready to record</div>
+                <h3 style="margin-top: 20px;">Live Transcription:</h3>
+                <div class="transcription-box" id="transcriptionBox">
+                    <p style="color: #999;">Transcriptions will appear here...</p>
+                </div>
+                <div class="tts-section">
+                    <h3>Text-to-Speech</h3>
+                    <div class="tts-input">
+                        <input type="text" id="ttsInput" placeholder="Type message to speak...">
+                        <button class="btn-primary" onclick="speakText()">Speak</button>
+                        <button class="btn-secondary" onclick="speakAllTranscriptions()">Read All</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <canvas id="canvas" style="display: none;"></canvas>
+
+    <script>
+        const socket = io({
+            maxHttpBufferSize: 10 * 1024 * 1024  // 10MB - must match server config
+        });
+        const emotionEmojis = { 'happy': '😊', 'sad': '😢', 'angry': '😠', 'surprise': '😮', 'fear': '😨', 'disgust': '🤢', 'neutral': '😐' };
+
+        let videoStream = null;
+        let audioContext = null;
+        let audioStream = null;
+        let scriptProcessor = null;
+        let analyser = null;
+        let pcmBuffer = [];
+        let isRecording = false;
+        let lastSoundTime = Date.now();
+        let transcriptions = [];
+
+        // Socket events
+        socket.on('connect', () => console.log('Connected to server'));
+        socket.on('emotion_result', (data) => updateEmotionDisplay(data));
+        socket.on('transcription', (data) => {
+            console.log('Received transcription:', data);
+            transcriptions.push(data);
+            updateTranscriptionDisplay();
+        });
+
+        // Video functions
+        async function startVideo() {
+            try {
+                videoStream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+                document.getElementById('video').srcObject = videoStream;
+                document.getElementById('startVideoBtn').disabled = true;
+                document.getElementById('stopVideoBtn').disabled = false;
+                sendVideoFrames();
+            } catch (err) { alert('Camera error: ' + err.message); }
+        }
+
+        function stopVideo() {
+            if (videoStream) { videoStream.getTracks().forEach(track => track.stop()); videoStream = null; }
+            document.getElementById('startVideoBtn').disabled = false;
+            document.getElementById('stopVideoBtn').disabled = true;
+        }
+
+        function sendVideoFrames() {
+            if (!videoStream) return;
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 320; canvas.height = 240;
+
+            function captureFrame() {
+                if (!videoStream) return;
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                socket.emit('video_frame', { image: canvas.toDataURL('image/jpeg', 0.7) });
+                setTimeout(captureFrame, 200);
+            }
+            captureFrame();
+        }
+
+        function updateEmotionDisplay(data) {
+            const emoji = emotionEmojis[data.emotion] || '😐';
+            document.getElementById('emotionEmoji').textContent = emoji;
+            document.getElementById('emotionName').textContent = data.emotion.charAt(0).toUpperCase() + data.emotion.slice(1);
+            document.getElementById('emotionConfidence').textContent = `Confidence: ${(data.confidence * 100).toFixed(0)}%`;
+            document.getElementById('emotionOverlay').textContent = `${emoji} ${data.emotion.toUpperCase()} ${(data.confidence * 100).toFixed(0)}%`;
+        }
+
+        // Audio functions - ScriptProcessor for direct PCM capture
+        async function startAudio() {
+            try {
+                audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createMediaStreamSource(audioStream);
+
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                source.connect(analyser);
+
+                scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+                source.connect(scriptProcessor);
+                scriptProcessor.connect(audioContext.destination);
+
+                scriptProcessor.onaudioprocess = (e) => {
+                    if (!isRecording) return;
+                    pcmBuffer.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+                };
+
+                isRecording = true;
+                pcmBuffer = [];
+                lastSoundTime = Date.now();
+
+                document.getElementById('startAudioBtn').disabled = true;
+                document.getElementById('stopAudioBtn').disabled = false;
+                document.getElementById('audioStatus').className = 'status recording';
+                document.getElementById('audioStatus').textContent = 'Recording... Speak and pause to transcribe';
+
+                detectSilence();
+            } catch (err) { alert('Microphone error: ' + err.message); }
+        }
+
+        function stopAudio() {
+            isRecording = false;
+            if (scriptProcessor) { scriptProcessor.disconnect(); scriptProcessor = null; }
+            if (audioStream) { audioStream.getTracks().forEach(track => track.stop()); audioStream = null; }
+            if (audioContext) { audioContext.close(); audioContext = null; }
+
+            document.getElementById('startAudioBtn').disabled = false;
+            document.getElementById('stopAudioBtn').disabled = true;
+            document.getElementById('audioStatus').className = 'status ready';
+            document.getElementById('audioStatus').textContent = 'Ready to record';
+        }
+
+        function detectSilence() {
+            if (!isRecording || !analyser) return;
+
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteFrequencyData(dataArray);
+            const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+
+            if (average > 15) {
+                lastSoundTime = Date.now();
+                document.getElementById('audioStatus').textContent = 'Recording... Speaking detected';
+            } else {
+                const silenceDuration = Date.now() - lastSoundTime;
+                if (silenceDuration > 1500 && pcmBuffer.length > 10) {
+                    document.getElementById('audioStatus').textContent = 'Processing speech...';
+                    processAndSendAudio();
+                    pcmBuffer = [];
+                    lastSoundTime = Date.now();
+                } else if (pcmBuffer.length > 0) {
+                    document.getElementById('audioStatus').textContent = 'Recording... Waiting for pause';
+                }
+            }
+
+            if (isRecording) requestAnimationFrame(detectSilence);
+        }
+
+        function processAndSendAudio() {
+            if (pcmBuffer.length === 0) return;
+
+            // Combine PCM chunks
+            const totalLength = pcmBuffer.reduce((acc, chunk) => acc + chunk.length, 0);
+            const combined = new Float32Array(totalLength);
+            let offset = 0;
+            for (const chunk of pcmBuffer) { combined.set(chunk, offset); offset += chunk.length; }
+
+            // Convert to 16-bit PCM
+            const samples = new Int16Array(combined.length);
+            for (let i = 0; i < combined.length; i++) {
+                const s = Math.max(-1, Math.min(1, combined[i]));
+                samples[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            }
+
+            // Create WAV
+            const sampleRate = audioContext ? audioContext.sampleRate : 48000;
+            const buffer = new ArrayBuffer(44 + samples.length * 2);
+            const view = new DataView(buffer);
+
+            // WAV header
+            const writeString = (offset, string) => { for (let i = 0; i < string.length; i++) view.setUint8(offset + i, string.charCodeAt(i)); };
+            writeString(0, 'RIFF');
+            view.setUint32(4, 36 + samples.length * 2, true);
+            writeString(8, 'WAVE');
+            writeString(12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true);
+            view.setUint16(22, 1, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * 2, true);
+            view.setUint16(32, 2, true);
+            view.setUint16(34, 16, true);
+            writeString(36, 'data');
+            view.setUint32(40, samples.length * 2, true);
+            for (let i = 0; i < samples.length; i++) view.setInt16(44 + i * 2, samples[i], true);
+
+            // Convert to base64 and send
+            const bytes = new Uint8Array(buffer);
+            let binary = '';
+            for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+
+            console.log('Sending audio:', samples.length, 'samples at', sampleRate, 'Hz');
+            socket.emit('audio_chunk', { audio: btoa(binary), sampleRate: sampleRate });
+        }
+
+        function updateTranscriptionDisplay() {
+            const box = document.getElementById('transcriptionBox');
+            if (transcriptions.length === 0) {
+                box.innerHTML = '<p style="color: #999;">Transcriptions will appear here...</p>';
+                return;
+            }
+            let html = '';
+            for (const t of transcriptions) {
+                html += `<div class="transcription-item"><span class="transcription-time">[${t.time}]</span> ${t.text}</div>`;
+            }
+            box.innerHTML = html;
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function clearTranscriptions() {
+            transcriptions = [];
+            updateTranscriptionDisplay();
+        }
+
+        function speakText() {
+            const text = document.getElementById('ttsInput').value.trim();
+            if (text) { socket.emit('speak_text', { text: text }); document.getElementById('ttsInput').value = ''; }
+        }
+
+        function speakAllTranscriptions() {
+            if (transcriptions.length === 0) {
+                alert('No transcriptions to read');
+                return;
+            }
+            // Combine all transcription texts
+            const allText = transcriptions.map(t => t.text).join('. ');
+            socket.emit('speak_text', { text: allText });
+        }
+
+        document.getElementById('ttsInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') speakText(); });
+    </script>
+</body>
+</html>
